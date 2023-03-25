@@ -1,0 +1,10 @@
+requests==2.27.1
+pandas==1.4.4
+pandas-datareader==0.10.0
+pandas-profiling==3.2.0
+openai==0.27.2
+openai-whisper @ git+https://github.com/openai/whisper.git@6dea21fd7f7253bfe450f1e2512a0fe47ee2d258
+python-slugify==8.0.1
+pytube @ git+https://github.com/pytube/pytube@d3d18691b3e99b2d3b4d620446b088a1c32896c6
+Markdown==3.4.2
+markdown-it-py==2.2.0
