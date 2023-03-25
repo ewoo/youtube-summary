@@ -194,14 +194,14 @@ def check_if_url_is_valid(url):
 
 
 # Setup UI.
-st.title('YouTube Podcast Summarizer')
+st.write('## YouTube Podcast Summarizer')
 
 div_info = st.container()
 # Initialize model and OpenAI API.
 with div_info:
-    st.spinner('Loading OpenAI Whisper model...')
+    st.spinner('Mind-melding with OpenAI Whisper model...')
     model = load_openai_whisper_model()
-    st.success('Loaded OpenAI Whisper model.')
+    st.success('Mind-melding complete. OpenAI Whisper model ready.')
 
 initialize_openai_api()
 div_header = st.container()
@@ -213,7 +213,7 @@ with div_header:
 
 # Get user input.
 youtube_video_url = st.text_input(
-    'Please enter YouTube video URL that you want to summarize.')
+    'YouTube video URL that you want to summarize:')
 div_button = st.empty()
 with div_button:
     submit_button = st.button('Summarize')
