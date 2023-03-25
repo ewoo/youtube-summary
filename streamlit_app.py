@@ -1,3 +1,4 @@
+from urllib.parse import urlparse
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,6 +9,7 @@ import whisper
 from pytube import YouTube
 import openai
 from getpass import getpass
+
 
 def measure_time(func):
     def wrapper(*args, **kwargs):
@@ -24,6 +26,7 @@ def measure_time(func):
         return result
     return wrapper
 
+
 @measure_time
 def download_audio_from_youtube(url, target_filename):
     print("Downloading audio file from Youtube...")
@@ -33,11 +36,13 @@ def download_audio_from_youtube(url, target_filename):
     stream.download(filename=target_filename)
     return target_filename
 
+
 @measure_time
 def transcribe_audio(model, audio_file):
     print("Transcribing audio...")
     output = model.transcribe(audio_file)
     return output
+
 
 def save_transcription_output(output, pkl_file, txt_file):
     with open(pkl_file, 'wb') as file:
@@ -48,6 +53,7 @@ def save_transcription_output(output, pkl_file, txt_file):
         file.write(output['text'])
     print(f"Transcription output text saved as {txt_file}.")
     print('')
+
 
 def get_target_indices(transcript_df, target_sum=4097):
     cumulative_sum = 0
@@ -69,8 +75,9 @@ def get_target_indices(transcript_df, target_sum=4097):
     #     target_indices.append(len(transcript_df) - 1)
     return target_indices
 
+
 @measure_time
-def generate_response(prompt):  
+def call_GPT(prompt):
     print("Calling OpenAI...")
     response = openai.Completion.create(
         engine="text-davinci-003",
@@ -80,6 +87,7 @@ def generate_response(prompt):
         top_p=1.0,
     )
     return response
+
 
 def generate_summary(transcript_df, target_indices):
     responses = []
@@ -94,54 +102,99 @@ def generate_summary(transcript_df, target_indices):
         prompt = f"{prompt}\n\ntl;dr:"
 
         # Call OpenAI.
-        resp = generate_response(prompt)
-        summary = summary + resp['choices'][0]['text']
+        resp = call_GPT(prompt)
+        summary = summary + extract_text_from_response(resp)
 
         start_index = end_index + 1
 
     return summary
 
+
+def extract_text_from_response(resp):
+    return resp['choices'][0]['text']
+
+
 def save_summary(summary, txt_file):
     with open(txt_file, 'w', encoding='utf-8') as file:
         file.write(summary)
 
+
 def generate_summary_of_summaries(summary):
     prompt = f"{summary}\n\ntl;dr:"
-    resp = generate_response(prompt)
+    resp = call_GPT(prompt)
     return resp['choices'][0]['text']
 
-def summarize_youtube_video(youtube_video_url):
-  youtube_video_url = youtube_video_url
-  audio_file = 'audio.mp4'
-  download_audio_from_youtube(youtube_video_url, audio_file)
 
-  output = transcribe_audio(model, audio_file)
-  save_transcription_output(output, 'audio_transcription.pkl', 'audio_transcription.txt')
+def summarize_youtube_video(youtube_video_url, model):
+    youtube_video_url = youtube_video_url
+    audio_file = 'audio.mp4'
+    download_audio_from_youtube(youtube_video_url, audio_file)
 
-  transcript_df = pd.DataFrame(output['segments'])
-  transcript_df['token_count'] = transcript_df['tokens'].apply(len)
-  transcript_df.head()
+    output = transcribe_audio(model, audio_file)
+    save_transcription_output(
+        output, 'audio_transcription.pkl', 'audio_transcription.txt')
 
-  target_indices = get_target_indices(transcript_df)
-  summary = generate_summary(transcript_df, target_indices)
-  save_summary(summary, 'episode_summary.txt')
+    transcript_df = pd.DataFrame(output['segments'])
+    transcript_df['token_count'] = transcript_df['tokens'].apply(len)
+    transcript_df.head()
 
-  final_summary = summary
-  if len(target_indices) > 3:
-    final_summary = generate_summary_of_summaries(summary)
+    # TODO: Chunk summaries only if exceeds target model's token limit.
+    target_indices = get_target_indices(transcript_df)
+    summary = generate_summary(transcript_df, target_indices)
+    save_summary(summary, 'episode_summary.txt')
 
-  return final_summary
+    final_summary = summary
+    if len(target_indices) > 0:
+        final_summary = generate_summary_of_summaries(summary)
+
+    return final_summary
+
+
+@st.cache_resource
+def load_openai_whisper_model():
+    # One time initialization.
+    # Loading model takes a while so should be done once.
+    model = whisper.load_model('base')
+    return model
+
+
+def initialize_openai_api():
+    # This orgnization ID is for Wooyong Ee!
+    openai.organization = "org-vuYlHZXjJF5eEOed6foak12t"
+    # openai.api_key = os.getenv("OPENAI_API_KEY")
+    openai.api_key = getpass()  # Enter my OpenAPI API secret key
+
+
+def check_if_url_is_valid(url):
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc, result.path])
+    except ValueError:
+        return False
+
+
+def handle_button_click():
+    youtube_video_url = st.text_input('Enter YouTube video URL')
+    if check_if_url_is_valid(youtube_video_url):
+        summary = summarize_youtube_video(youtube_video_url, model)
+        st.write(summary)
+    else:
+        st.write('Please enter a valid YouTube video URL.')
+
 
 # Setup UI.
 st.title('YouTube Podcast Summarizer')
 
-# One time initialization.
-model = whisper.load_model('base') # Loading model takes a while so should be done once.
+# Initialize model and OpenAI API.
+with st.spinner('Loading OpenAI Whisper model...'):
+    model = load_openai_whisper_model()
+st.success('Loaded OpenAI Whisper model.')
+initialize_openai_api()
 
-# Configuration specific to me.
-# Setup OpenAI API. 
-openai.organization = "org-vuYlHZXjJF5eEOed6foak12t" # This orgnization ID is for Wooyong Ee!
-# openai.api_key = os.getenv("OPENAI_API_KEY")
+resp = call_GPT("Hello World")
+st.write(extract_text_from_response(resp))
 
-# Prompt for secret key.
-openai.api_key = getpass() # Enter my OpenAPI API secret key
+# Get user input.
+youtube_video_url = st.text_input(
+    'Please enter YouTube video URL that you want to summarize.')
+st.button('Summarize', on_click=handle_button_click)
