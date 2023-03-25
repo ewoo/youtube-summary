@@ -157,7 +157,7 @@ def load_openai_whisper_model():
     model = whisper.load_model('base')
     return model
 
-
+@st.cache_resource
 def initialize_openai_api():
     # This orgnization ID is for Wooyong Ee!
     openai.organization = "org-vuYlHZXjJF5eEOed6foak12t"
@@ -173,15 +173,6 @@ def check_if_url_is_valid(url):
         return False
 
 
-def handle_button_click():
-    youtube_video_url = st.text_input('Enter YouTube video URL')
-    if check_if_url_is_valid(youtube_video_url):
-        summary = summarize_youtube_video(youtube_video_url, model)
-        st.write(summary)
-    else:
-        st.write('Please enter a valid YouTube video URL.')
-
-
 # Setup UI.
 st.title('YouTube Podcast Summarizer')
 
@@ -191,10 +182,21 @@ with st.spinner('Loading OpenAI Whisper model...'):
 st.success('Loaded OpenAI Whisper model.')
 initialize_openai_api()
 
-resp = call_GPT("Hello World")
-st.write(extract_text_from_response(resp))
+prompt = "Hi, are you ready for some tasks?"
+st.write(f"**Me:** {prompt}")
+resp = call_GPT(prompt)
+st.write(f'**GPT:** {extract_text_from_response(resp)}')
 
 # Get user input.
 youtube_video_url = st.text_input(
     'Please enter YouTube video URL that you want to summarize.')
-st.button('Summarize', on_click=handle_button_click)
+st.button('Summarize')
+
+if check_if_url_is_valid(youtube_video_url):
+    with st.spinner('Transcribing and summarizing your video...'):
+        summary = summarize_youtube_video(youtube_video_url, model)
+    st.success('Completed. Please review the summary below.')
+    st.write("## Episode Summary")
+    st.write(summary)
+else:
+    st.warning('Please enter a valid YouTube video URL.')
