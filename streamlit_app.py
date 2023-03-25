@@ -29,6 +29,7 @@ def measure_time(func):
 
 @measure_time
 def download_audio_from_youtube(url, target_filename):
+    div_progress.text('Downloading audio file from Youtube...')
     print("Downloading audio file from Youtube...")
     youtube_video = YouTube(url)
     streams = youtube_video.streams.filter(only_audio=True)
@@ -39,6 +40,7 @@ def download_audio_from_youtube(url, target_filename):
 
 @measure_time
 def transcribe_audio(model, audio_file):
+    div_progress.text('Transcribing audio...')
     print("Transcribing audio...")
     output = model.transcribe(audio_file)
     return output
@@ -71,8 +73,8 @@ def get_target_indices(transcript_df, target_sum=4097):
 
     # Also, put a default and slice only if entire chunk is larger than
     # token limit of 4097.
-    # if(len(target_indices)==0):
-    #     target_indices.append(len(transcript_df) - 1)
+    if(len(target_indices)==0):
+        target_indices.append(len(transcript_df) - 1)
     return target_indices
 
 
@@ -99,6 +101,7 @@ def generate_summary(transcript_df, target_indices):
         print(f'start:{start_index} end:{end_index}')
         prompt = prompt.astype(str)
         prompt = ''.join(prompt)
+        # Adding TL;DR to the prompt makes the model generate a summary.
         prompt = f"{prompt}\n\ntl;dr:"
 
         # Call OpenAI.
@@ -111,7 +114,7 @@ def generate_summary(transcript_df, target_indices):
 
 
 def extract_text_from_response(resp):
-    return resp['choices'][0]['text']
+    return resp['choices'][0]['text'].strip()
 
 
 def save_summary(summary, txt_file):
@@ -134,12 +137,19 @@ def summarize_youtube_video(youtube_video_url, model):
     save_transcription_output(
         output, 'audio_transcription.pkl', 'audio_transcription.txt')
 
+    print("Converting transcription output to dataframe...")
+    print("")
     transcript_df = pd.DataFrame(output['segments'])
     transcript_df['token_count'] = transcript_df['tokens'].apply(len)
     transcript_df.head()
 
     # TODO: Chunk summaries only if exceeds target model's token limit.
+    print("Computing target indices...")
+    print("")
     target_indices = get_target_indices(transcript_df)
+
+    print("Generating summary...")
+    print("")
     summary = generate_summary(transcript_df, target_indices)
     save_summary(summary, 'episode_summary.txt')
 
@@ -147,7 +157,14 @@ def summarize_youtube_video(youtube_video_url, model):
     if len(target_indices) > 0:
         final_summary = generate_summary_of_summaries(summary)
 
+    print("Finised generating summary.")
+    print("")
     return final_summary
+
+
+# TODO: Add a function to slice the transcript if it's too long.
+def slice_if_transcription_is_long(transcript):
+    return transcript
 
 
 @st.cache_resource
@@ -157,12 +174,15 @@ def load_openai_whisper_model():
     model = whisper.load_model('base')
     return model
 
+
 @st.cache_resource
 def initialize_openai_api():
     # This orgnization ID is for Wooyong Ee!
     openai.organization = "org-vuYlHZXjJF5eEOed6foak12t"
     # openai.api_key = os.getenv("OPENAI_API_KEY")
     openai.api_key = getpass()  # Enter my OpenAPI API secret key
+    print('Initialized OpenAI API.')
+    print('')
 
 
 def check_if_url_is_valid(url):
@@ -176,27 +196,39 @@ def check_if_url_is_valid(url):
 # Setup UI.
 st.title('YouTube Podcast Summarizer')
 
+div_info = st.container()
 # Initialize model and OpenAI API.
-with st.spinner('Loading OpenAI Whisper model...'):
+with div_info:
+    st.spinner('Loading OpenAI Whisper model...')
     model = load_openai_whisper_model()
-st.success('Loaded OpenAI Whisper model.')
-initialize_openai_api()
+    st.success('Loaded OpenAI Whisper model.')
 
-prompt = "Hi, are you ready for some tasks?"
-st.write(f"**Me:** {prompt}")
-resp = call_GPT(prompt)
-st.write(f'**GPT:** {extract_text_from_response(resp)}')
+initialize_openai_api()
+div_header = st.container()
+with div_header:
+    prompt = "Hi, are you ready for some tasks?"
+    st.write(f"**Me:** {prompt}")
+    resp = call_GPT(prompt)
+    st.write(f'**GPT:** {extract_text_from_response(resp)}')
 
 # Get user input.
 youtube_video_url = st.text_input(
     'Please enter YouTube video URL that you want to summarize.')
-st.button('Summarize')
+div_button = st.empty()
+with div_button:
+    submit_button = st.button('Summarize')
 
-if check_if_url_is_valid(youtube_video_url):
-    with st.spinner('Transcribing and summarizing your video...'):
-        summary = summarize_youtube_video(youtube_video_url, model)
-    st.success('Completed. Please review the summary below.')
-    st.write("## Episode Summary")
-    st.write(summary)
-else:
-    st.warning('Please enter a valid YouTube video URL.')
+if submit_button:
+    div_button.empty()
+    if check_if_url_is_valid(youtube_video_url):
+        with st.spinner('Summarizing your video...'):
+            div_progress = st.empty()
+            summary = summarize_youtube_video(youtube_video_url, model)
+            div_progress.empty()
+        st.success('Completed. Please review the summary below.')
+        st.write("## Episode Summary")
+        st.write(summary)
+        reset_button = st.button('Do Another')
+    else:
+        with div_info:
+            st.warning('Please enter a valid YouTube video URL.')
