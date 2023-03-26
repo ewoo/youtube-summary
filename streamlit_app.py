@@ -222,10 +222,9 @@ def load_openai_whisper_model():
 
 @st.cache_resource
 def initialize_openai_api():
-    # This orgnization ID is for Wooyong Ee!
-    openai.organization = "org-vuYlHZXjJF5eEOed6foak12t"
+    openai.organization = st.secrets["OPENAI_ORG_ID"]
     # openai.api_key = os.getenv("OPENAI_API_KEY")
-    openai.api_key = getpass()  # Enter my OpenAPI API secret key
+    openai.api_key = st.secrets["OPENAI_API_KEY"]
     print('Initialized OpenAI API.')
     print('')
 
