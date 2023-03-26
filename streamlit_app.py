@@ -178,8 +178,8 @@ def generate_summary_of_summaries(summary):
 
 def summarize_youtube_video(youtube_video_url, model):
     unique_id = str(uuid.uuid4().hex)[:8]
-    audio_file = unique_id + '.mp4'
-    transcription_file = unique_id + '.txt'
+    audio_file = 'audio-' + unique_id + '.mp4'
+    transcription_file = 'full-transcript-' + unique_id + '.txt'
 
     youtube_video_url = youtube_video_url
     download_audio_from_youtube(youtube_video_url, audio_file)
@@ -210,9 +210,14 @@ def summarize_youtube_video(youtube_video_url, model):
     save_summary(summary, 'episode_summary.txt')
 
     div_progress.text('Wrapping-up...')
-    final_summary = summary
+    final_summary = ''
     if len(target_indices) > 0:
+        print("Summarizing further...")
+        print("")
         final_summary = generate_summary_of_summaries(summary)
+    else:
+        print("No need to summarize again.")
+        print("")
 
     div_progress.text('Done...')
     print("Finished generating summary.")
@@ -285,6 +290,10 @@ if submit_button:
             div_progress = st.empty()
             summary = summarize_youtube_video(youtube_video_url, model)
             div_progress.empty()
+            if len(summary)>0:
+                st.write(f'**TL;DR**')
+                st.write(f' {summary}')
+                display_summary_stats(len(summary.split()))
         with div_progress:
             st.success('Completed. Please review the summary below.')
         reset_button = st.button('Lets Do Another!')
