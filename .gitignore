@@ -127,5 +127,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# My app specific files
 audio_transcription.pkl
 audio.mp4
+secrets.toml
