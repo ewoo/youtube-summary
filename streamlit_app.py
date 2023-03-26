@@ -9,6 +9,9 @@ import whisper
 from pytube import YouTube
 import openai
 from getpass import getpass
+from PIL import Image
+import requests
+from io import BytesIO
 
 
 def measure_time(func):
@@ -32,15 +35,50 @@ def download_audio_from_youtube(url, target_filename):
     div_progress.text('Downloading audio file from Youtube...')
     print("Downloading audio file from Youtube...")
     youtube_video = YouTube(url)
+
+    display_video_stats(youtube_video)
+
     streams = youtube_video.streams.filter(only_audio=True)
     stream = streams.first()
     stream.download(filename=target_filename)
     return target_filename
 
 
+def display_video_stats(youtube_video):
+    st.write(f'**{youtube_video.title}**')
+    # resp = requests.get(youtube_video.thumbnail_url)
+    # video_thumbnail = Image.open(BytesIO(resp.content))
+    # st.image(video_thumbnail, caption=youtube_video.title, use_column_width=True)
+
+    # st.write(f'**{youtube_video.description}**')
+    # st.write(f'**{youtube_video.views}**')
+    # st.write(f'**{youtube_video.rating}**')
+    # st.write(f'**{youtube_video.length}**')
+    # st.write(f'**{youtube_video.author}**')
+
+
+def approximate_reading_time(word_count):
+    return round(word_count / 200)
+
+
+def display_transcription_stats(transcript_df):
+    st.write(f'Dialog Content Statistics')
+    word_count = transcript_df['token_count'].sum()
+    st.write(f"Word count: {word_count}")
+    st.write(
+        f'Aproximate reading time: {approximate_reading_time(word_count)} mins')
+
+
+def display_summary_stats(token_count):
+    st.write(f'Summary Statistics')
+    st.write(f"Word count: {token_count}")
+    st.write(
+        f'Aproximate reading time: {approximate_reading_time(token_count)} mins')
+
+
 @measure_time
 def transcribe_audio(model, audio_file):
-    div_progress.text('Transcribing audio...')
+    div_progress.text('Transcribing audio... (this will take a few minutes)')
     print("Transcribing audio...")
     output = model.transcribe(audio_file)
     return output
@@ -73,7 +111,7 @@ def get_target_indices(transcript_df, target_sum=4097):
 
     # Also, put a default and slice only if entire chunk is larger than
     # token limit of 4097.
-    if(len(target_indices)==0):
+    if(len(target_indices) == 0):
         target_indices.append(len(transcript_df) - 1)
     return target_indices
 
@@ -91,7 +129,9 @@ def call_GPT(prompt):
     return response
 
 
-def generate_summary(transcript_df, target_indices):
+def generate_intermmediate_summary(transcript_df, target_indices):
+    div_progress.text('Conversing with GPT...')
+
     responses = []
     summary = ''
     start_index = 0
@@ -106,7 +146,9 @@ def generate_summary(transcript_df, target_indices):
 
         # Call OpenAI.
         resp = call_GPT(prompt)
-        summary = summary + extract_text_from_response(resp)
+        summary_section = extract_text_from_response(resp)
+        st.write(summary_section)
+        summary = summary + summary_section
 
         start_index = end_index + 1
 
@@ -141,22 +183,25 @@ def summarize_youtube_video(youtube_video_url, model):
     print("")
     transcript_df = pd.DataFrame(output['segments'])
     transcript_df['token_count'] = transcript_df['tokens'].apply(len)
-    transcript_df.head()
+    display_transcription_stats(transcript_df)
 
     # TODO: Chunk summaries only if exceeds target model's token limit.
     print("Computing target indices...")
     print("")
     target_indices = get_target_indices(transcript_df)
 
+    div_progress.text('Summarizing transcription...')
     print("Generating summary...")
     print("")
-    summary = generate_summary(transcript_df, target_indices)
+    summary = generate_intermmediate_summary(transcript_df, target_indices)
     save_summary(summary, 'episode_summary.txt')
 
+    div_progress.text('Wrapping-up...')
     final_summary = summary
     if len(target_indices) > 0:
         final_summary = generate_summary_of_summaries(summary)
 
+    div_progress.text('Done...')
     print("Finised generating summary.")
     print("")
     return final_summary
@@ -193,13 +238,16 @@ def check_if_url_is_valid(url):
         return False
 
 
+# Some global variables. Sorry!
+youtube_video = None
+
 # Setup UI.
 st.write('## YouTube Podcast Summarizer')
 
 div_info = st.container()
 # Initialize model and OpenAI API.
 with div_info:
-    st.spinner('Mind-melding with OpenAI Whisper model...')
+    st.spinner('Performing Vulcan mind-melding with OpenAI Whisper model...')
     model = load_openai_whisper_model()
     st.success('Mind-melding complete. OpenAI Whisper model ready.')
 
@@ -213,7 +261,7 @@ with div_header:
 
 # Get user input.
 youtube_video_url = st.text_input(
-    'YouTube video URL that you want to summarize:')
+    'YouTube video URL that you want to summarize:', placeholder='YouTube video URL')
 div_button = st.empty()
 with div_button:
     submit_button = st.button('Summarize')
@@ -225,10 +273,9 @@ if submit_button:
             div_progress = st.empty()
             summary = summarize_youtube_video(youtube_video_url, model)
             div_progress.empty()
-        st.success('Completed. Please review the summary below.')
-        st.write("## Episode Summary")
-        st.write(summary)
-        reset_button = st.button('Do Another')
+        with div_progress:
+            st.success('Completed. Please review the summary below.')
+        reset_button = st.button('Lets Do Another!')
     else:
         with div_info:
             st.warning('Please enter a valid YouTube video URL.')
