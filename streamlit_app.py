@@ -2,9 +2,7 @@ from urllib.parse import urlparse
 import streamlit as st
 import pandas as pd
 import numpy as np
-
 import datetime
-import pickle
 import whisper
 from pytube import YouTube
 import openai
@@ -12,6 +10,8 @@ from getpass import getpass
 from PIL import Image
 import requests
 from io import BytesIO
+import uuid
+import os
 
 
 def measure_time(func):
@@ -67,14 +67,14 @@ def display_transcription_stats(transcript_df):
     word_count = transcript_df['token_count'].sum()
     st.write(f"Transcript word count: {word_count}")
     # st.write(
-        # f'Aproximate reading time: {approximate_reading_time(word_count)} mins')
+    # f'Aproximate reading time: {approximate_reading_time(word_count)} mins')
 
 
 def display_summary_stats(token_count):
-    st.write(f'Summary Statistics')
+    # st.write(f'Summary Statistics')
     # st.write(f"Word count: {token_count}")
     mins = approximate_reading_time(token_count)
-    if mins == 0:
+    if mins <= 1:
         st.write(f'Aproximate reading time: less than a minute')
     else:
         st.write(f'Aproximate reading time: {mins} mins')
@@ -88,11 +88,7 @@ def transcribe_audio(model, audio_file):
     return output
 
 
-def save_transcription_output(output, pkl_file, txt_file):
-    with open(pkl_file, 'wb') as file:
-        pickle.dump(output, file)
-    print(f"Transcription output saved as {pkl_file}.")
-
+def save_transcription_output(output, txt_file):
     with open(txt_file, 'w', encoding='utf-8') as file:
         file.write(output['text'])
     print(f"Transcription output text saved as {txt_file}.")
@@ -140,6 +136,8 @@ def generate_intermmediate_summary(transcript_df, target_indices):
     summary = ''
     start_index = 0
 
+    st.write(f'**Summary**')
+
     for end_index in target_indices:
         prompt = transcript_df['text'][start_index: end_index]
         print(f'start:{start_index} end:{end_index}')
@@ -175,15 +173,24 @@ def generate_summary_of_summaries(summary):
     resp = call_GPT(prompt)
     return resp['choices'][0]['text']
 
+# Main function.
+
 
 def summarize_youtube_video(youtube_video_url, model):
+    unique_id = str(uuid.uuid4().hex)[:8]
+    audio_file = unique_id + '.mp4'
+    transcription_file = unique_id + '.txt'
+
     youtube_video_url = youtube_video_url
-    audio_file = 'audio.mp4'
     download_audio_from_youtube(youtube_video_url, audio_file)
 
     output = transcribe_audio(model, audio_file)
     save_transcription_output(
-        output, 'audio_transcription.pkl', 'audio_transcription.txt')
+        output, transcription_file)
+
+    # Clean-up audio file.
+    if os.path.exists(audio_file):
+        os.remove(audio_file)
 
     print("Converting transcription output to dataframe...")
     print("")
@@ -208,7 +215,7 @@ def summarize_youtube_video(youtube_video_url, model):
         final_summary = generate_summary_of_summaries(summary)
 
     div_progress.text('Done...')
-    print("Finised generating summary.")
+    print("Finished generating summary.")
     print("")
     return final_summary
 
