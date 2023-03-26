@@ -180,9 +180,11 @@ def summarize_youtube_video(youtube_video_url, model):
     unique_id = str(uuid.uuid4().hex)[:8]
     audio_file = 'audio-' + unique_id + '.mp4'
     transcription_file = 'full-transcript-' + unique_id + '.txt'
+    summary_file = 'summary-' + unique_id + '.txt'
 
     youtube_video_url = youtube_video_url
     download_audio_from_youtube(youtube_video_url, audio_file)
+    st.audio(audio_file)
 
     output = transcribe_audio(model, audio_file)
     save_transcription_output(
@@ -207,7 +209,7 @@ def summarize_youtube_video(youtube_video_url, model):
     print("Generating summary...")
     print("")
     summary = generate_intermmediate_summary(transcript_df, target_indices)
-    save_summary(summary, 'episode_summary.txt')
+    save_summary(summary, summary_file)
 
     div_progress.text('Wrapping-up...')
     final_summary = ''
@@ -284,8 +286,8 @@ with div_button:
     submit_button = st.button('Summarize')
 
 if submit_button:
-    div_button.empty()
     if check_if_url_is_valid(youtube_video_url):
+        div_button.empty()
         with st.spinner('Summarizing your video...'):
             div_progress = st.empty()
             summary = summarize_youtube_video(youtube_video_url, model)
@@ -296,7 +298,7 @@ if submit_button:
                 display_summary_stats(len(summary.split()))
         with div_progress:
             st.success('Completed. Please review the summary below.')
-        reset_button = st.button('Lets Do Another!')
+        st.button('Lets Do Another!')
     else:
         with div_info:
             st.warning('Please enter a valid YouTube video URL.')
