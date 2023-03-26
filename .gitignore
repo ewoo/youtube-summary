@@ -128,3 +128,4 @@ dmypy.json
 # Pyre type checker
 .pyre/
 audio_transcription.pkl
+audio.mp4
