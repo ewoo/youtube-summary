@@ -45,7 +45,9 @@ def download_audio_from_youtube(url, target_filename):
 
 
 def display_video_stats(youtube_video):
-    st.write(f'**{youtube_video.title}**')
+    st.write(f'**Title: {youtube_video.title}**')
+    duration_in_minutes = round(youtube_video.length / 60)
+    st.write(f'Duration: {duration_in_minutes} mins')
     # resp = requests.get(youtube_video.thumbnail_url)
     # video_thumbnail = Image.open(BytesIO(resp.content))
     # st.image(video_thumbnail, caption=youtube_video.title, use_column_width=True)
@@ -53,7 +55,6 @@ def display_video_stats(youtube_video):
     # st.write(f'**{youtube_video.description}**')
     # st.write(f'**{youtube_video.views}**')
     # st.write(f'**{youtube_video.rating}**')
-    # st.write(f'**{youtube_video.length}**')
     # st.write(f'**{youtube_video.author}**')
 
 
@@ -62,18 +63,21 @@ def approximate_reading_time(word_count):
 
 
 def display_transcription_stats(transcript_df):
-    st.write(f'Dialog Content Statistics')
+    # st.write(f'Dialog Content Statistics')
     word_count = transcript_df['token_count'].sum()
-    st.write(f"Word count: {word_count}")
-    st.write(
-        f'Aproximate reading time: {approximate_reading_time(word_count)} mins')
+    st.write(f"Transcript word count: {word_count}")
+    # st.write(
+        # f'Aproximate reading time: {approximate_reading_time(word_count)} mins')
 
 
 def display_summary_stats(token_count):
     st.write(f'Summary Statistics')
-    st.write(f"Word count: {token_count}")
-    st.write(
-        f'Aproximate reading time: {approximate_reading_time(token_count)} mins')
+    # st.write(f"Word count: {token_count}")
+    mins = approximate_reading_time(token_count)
+    if mins == 0:
+        st.write(f'Aproximate reading time: less than a minute')
+    else:
+        st.write(f'Aproximate reading time: {mins} mins')
 
 
 @measure_time
@@ -95,7 +99,7 @@ def save_transcription_output(output, pkl_file, txt_file):
     print('')
 
 
-def get_target_indices(transcript_df, target_sum=4097):
+def get_target_indices(transcript_df, target_sum=4000):
     cumulative_sum = 0
     target_indices = []
 
@@ -130,7 +134,7 @@ def call_GPT(prompt):
 
 
 def generate_intermmediate_summary(transcript_df, target_indices):
-    div_progress.text('Conversing with GPT...')
+    div_progress.text('Summarizing...')
 
     responses = []
     summary = ''
@@ -151,6 +155,8 @@ def generate_intermmediate_summary(transcript_df, target_indices):
         summary = summary + summary_section
 
         start_index = end_index + 1
+
+    display_summary_stats(len(summary.split()))
 
     return summary
 
@@ -241,7 +247,7 @@ def check_if_url_is_valid(url):
 youtube_video = None
 
 # Setup UI.
-st.write('## YouTube Podcast Summarizer')
+st.write('## YouTube Podcast Summarizer v0.3')
 
 div_info = st.container()
 # Initialize model and OpenAI API.
