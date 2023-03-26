@@ -82,7 +82,7 @@ def display_summary_stats(token_count):
 
 @measure_time
 def transcribe_audio(model, audio_file):
-    div_progress.text('Transcribing audio... (this will take a few minutes)')
+    div_progress.text('Transcribing audio...')
     print("Transcribing audio...")
     output = model.transcribe(audio_file)
     return output
@@ -277,6 +277,8 @@ with div_header:
     st.write(f"**Me:** {prompt}")
     resp = call_GPT(prompt)
     st.write(f'**GPT:** {extract_text_from_response(resp)}')
+    st.warning('No GPU enabled. Transcription may be slow. Select shorter videos.', icon='🤖')
+
 
 # Get user input.
 youtube_video_url = st.text_input(
@@ -291,6 +293,8 @@ if submit_button:
         with st.spinner('Summarizing your video...'):
             div_progress = st.empty()
             summary = summarize_youtube_video(youtube_video_url, model)
+
+            # Clear interstatial message area.
             div_progress.empty()
             if len(summary)>0:
                 st.write(f'**TL;DR**')
