@@ -169,7 +169,7 @@ def save_summary(summary, txt_file):
 
 
 def generate_summary_of_summaries(summary):
-    prompt = f"{summary}\n\ntl;dr:"
+    prompt = f"Generate key takeaways:{summary}"
     resp = call_GPT(prompt)
     return resp['choices'][0]['text']
 
@@ -297,7 +297,7 @@ if submit_button:
             # Clear interstatial message area.
             div_progress.empty()
             if len(summary)>0:
-                st.write(f'**TL;DR**')
+                st.write(f'**Key Takeaways**')
                 st.write(f' {summary}')
                 display_summary_stats(len(summary.split()))
         with div_progress:
