@@ -236,7 +236,7 @@ def slice_if_transcription_is_long(transcript):
 def load_openai_whisper_model():
     # One time initialization.
     # Loading model takes a while so should be done once.
-    model = whisper.load_model('base')
+    model = whisper.load_model('tiny')
     return model
 
 
