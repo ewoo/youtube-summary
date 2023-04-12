@@ -84,7 +84,11 @@ def display_summary_stats(token_count):
 def transcribe_audio(model, audio_file):
     div_progress.text('Transcribing audio...')
     print("Transcribing audio...")
-    output = model.transcribe(audio_file)
+    # output = model.transcribe(audio_file)
+    audio = open(audio_file, "rb")
+    output = openai.Audio.transcribe("whisper-1", audio, resposonse_format="text")
+    print("Transcription output:")
+    print(output)
     return output
 
 
@@ -196,19 +200,22 @@ def summarize_youtube_video(youtube_video_url, model):
 
     print("Converting transcription output to dataframe...")
     print("")
-    transcript_df = pd.DataFrame(output['segments'])
-    transcript_df['token_count'] = transcript_df['tokens'].apply(len)
-    display_transcription_stats(transcript_df)
+    # transcript_df = pd.DataFrame(output['segments'])
+    transcript_df = pd.DataFrame(output, columns=['text'], index=[0])
+    # transcript_df['token_count'] = transcript_df['tokens'].apply(len)
+    # display_transcription_stats(transcript_df)
 
     # TODO: Chunk summaries only if exceeds target model's token limit.
-    print("Computing target indices...")
-    print("")
-    target_indices = get_target_indices(transcript_df)
+    # print("Computing target indices...")
+    # print("")
+    # target_indices = get_target_indices(transcript_df)
+    target_indices = 1
 
     div_progress.text('Summarizing transcription...')
     print("Generating summary...")
     print("")
-    summary = generate_intermmediate_summary(transcript_df, target_indices)
+    summary = generate_intermmediate_summary(transcript_df, [0])
+    # summary = generate_intermmediate_summary(transcript_df, target_indices)
     save_summary(summary, summary_file)
 
     div_progress.text('Wrapping-up...')
@@ -267,7 +274,7 @@ div_info = st.container()
 # Initialize model and OpenAI API.
 with div_info:
     st.spinner('Performing Vulcan mind-melding with OpenAI Whisper model...')
-    model = load_openai_whisper_model()
+    # model = load_openai_whisper_model()
     st.success('Mind-melding complete. OpenAI Whisper model ready.')
 
 initialize_openai_api()
@@ -279,6 +286,7 @@ with div_header:
     st.write(f'**GPT:** {extract_text_from_response(resp)}')
     st.warning('No GPU enabled. Transcription may be slow. Select shorter videos.', icon='🤖')
 
+model = None
 
 # Get user input.
 youtube_video_url = st.text_input(
