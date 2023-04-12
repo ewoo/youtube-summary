@@ -86,7 +86,8 @@ def transcribe_audio(model, audio_file):
     print("Transcribing audio...")
     # output = model.transcribe(audio_file)
     audio = open(audio_file, "rb")
-    output = openai.Audio.transcribe("whisper-1", audio, resposonse_format="text")
+    output = openai.Audio.transcribe(
+        "whisper-1", audio, resposonse_format="text")
     print("Transcription output:")
     print(output)
     return output
@@ -99,15 +100,43 @@ def save_transcription_output(output, txt_file):
     print('')
 
 
+def generate_narration(summary_text):
+    api_key = st.secrets["ELEVENLABS_API_KEY"]
+    url = "https://api.elevenlabs.io/v1/text-to-speech/TxGEqnHWrfWFTfGW9XjX"
+    headers = {
+        "accept": "audio/mpeg",
+        "xi-api-key": api_key,
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "text": summary_text,
+        "voice_settings": {
+            "stability": 0,
+            "similarity_boost": 0
+        }
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code == 200:
+            return response.content
+        else:
+            return f"Request failed with status code {response.status_code}"
+    except Exception as e:
+        return f"Error occurred: {e}"
+
+
 def get_target_indices(transcript_df, target_sum=4000):
     cumulative_sum = 0
     target_indices = []
 
-    for index, row in transcript_df.iterrows():
-        cumulative_sum += row['token_count']
-        if cumulative_sum >= target_sum:
-            target_indices.append(index)
-            cumulative_sum = 0
+    if 'token_count' in transcript_df.columns:
+        for index, row in transcript_df.iterrows():
+            cumulative_sum += row['token_count']
+            if cumulative_sum >= target_sum:
+                target_indices.append(index)
+                cumulative_sum = 0
     # This function causes bugs. It seems token count is not consistent
     # with what the OpenAI expects. For example, when using Korean
     # the API rejected my prompt saying it was over the 4097 token limit
@@ -115,8 +144,8 @@ def get_target_indices(transcript_df, target_sum=4000):
 
     # Also, put a default and slice only if entire chunk is larger than
     # token limit of 4097.
-    if(len(target_indices) == 0):
-        target_indices.append(len(transcript_df) - 1)
+    # if(len(target_indices) == 0):
+    #     target_indices.append(len(transcript_df) - 1)
     return target_indices
 
 
@@ -135,30 +164,33 @@ def call_GPT(prompt):
 
 def generate_intermmediate_summary(transcript_df, target_indices):
     div_progress.text('Summarizing...')
-
     responses = []
     summary = ''
     start_index = 0
 
     st.write(f'**Summary**')
 
-    for end_index in target_indices:
-        prompt = transcript_df['text'][start_index: end_index]
-        print(f'start:{start_index} end:{end_index}')
+    if(len(target_indices)>0):
+      for end_index in target_indices:
+          prompt = transcript_df['text'][start_index: end_index]
+          print(f'start:{start_index} end:{end_index}')
+          prompt = prompt.astype(str)
+          prompt = ''.join(prompt)
+          prompt = f"{prompt}\n\ntl;dr:"
+          # Call OpenAI.
+          resp = call_GPT(prompt)
+          summary = summary + resp['choices'][0]['text']
+          # Repeat
+          start_index = end_index + 1
+    else:
+        prompt = transcript_df['text']
+        print(f'Sending all in one-shot!')
         prompt = prompt.astype(str)
         prompt = ''.join(prompt)
-        # Adding TL;DR to the prompt makes the model generate a summary.
         prompt = f"{prompt}\n\ntl;dr:"
-
         # Call OpenAI.
         resp = call_GPT(prompt)
-        summary_section = extract_text_from_response(resp)
-        st.write(summary_section)
-        summary = summary + summary_section
-
-        start_index = end_index + 1
-
-    display_summary_stats(len(summary.split()))
+        summary = summary + resp['choices'][0]['text']
 
     return summary
 
@@ -208,8 +240,7 @@ def summarize_youtube_video(youtube_video_url, model):
     # TODO: Chunk summaries only if exceeds target model's token limit.
     # print("Computing target indices...")
     # print("")
-    # target_indices = get_target_indices(transcript_df)
-    target_indices = 1
+    target_indices = get_target_indices(transcript_df)
 
     div_progress.text('Summarizing transcription...')
     print("Generating summary...")
@@ -219,20 +250,16 @@ def summarize_youtube_video(youtube_video_url, model):
     save_summary(summary, summary_file)
 
     div_progress.text('Wrapping-up...')
-    final_summary = ''
-    if len(target_indices) > 0:
+    final_summary = summary
+    if len(target_indices) > 3:
         print("Summarizing further...")
         print("")
         final_summary = generate_summary_of_summaries(summary)
-    else:
-        print("No need to summarize again.")
-        print("")
 
     div_progress.text('Done...')
     print("Finished generating summary.")
     print("")
     return final_summary
-
 
 # TODO: Add a function to slice the transcript if it's too long.
 def slice_if_transcription_is_long(transcript):
@@ -284,7 +311,8 @@ with div_header:
     st.write(f"**Me:** {prompt}")
     resp = call_GPT(prompt)
     st.write(f'**GPT:** {extract_text_from_response(resp)}')
-    st.warning('No GPU enabled. Transcription may be slow. Select shorter videos.', icon='🤖')
+    st.warning(
+        'No GPU enabled. Transcription may be slow. Select shorter videos.', icon='🤖')
 
 model = None
 
@@ -301,10 +329,18 @@ if submit_button:
         with st.spinner('Summarizing your video...'):
             div_progress = st.empty()
             summary = summarize_youtube_video(youtube_video_url, model)
-
+            narration = generate_narration(summary)
+            if isinstance(narration, bytes):
+                st.audio(narration)
+                with open("narration.mp4", "wb") as file:
+                    file.write(narration)
+                    print("Narration file saved as narration.mp4")
+            else:
+                print("Error:")
+                print(narration)
             # Clear interstatial message area.
             div_progress.empty()
-            if len(summary)>0:
+            if len(summary) > 0:
                 st.write(f'**Key Takeaways**')
                 st.write(f' {summary}')
                 display_summary_stats(len(summary.split()))
