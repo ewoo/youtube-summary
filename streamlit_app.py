@@ -220,6 +220,7 @@ def summarize_youtube_video(youtube_video_url, model):
 
     youtube_video_url = youtube_video_url
     download_audio_from_youtube(youtube_video_url, audio_file)
+    st.text('Extracted audio from YouTube video:')
     st.audio(audio_file)
 
     output = transcribe_audio(model, audio_file)
@@ -295,7 +296,7 @@ def check_if_url_is_valid(url):
 youtube_video = None
 
 # Setup UI.
-st.write('## YouTube Podcast Summarizer v0.3')
+st.write('## YouTube Podcast Summarizer v0.7')
 
 div_info = st.container()
 # Initialize model and OpenAI API.
@@ -331,6 +332,7 @@ if submit_button:
             summary = summarize_youtube_video(youtube_video_url, model)
             narration = generate_narration(summary)
             if isinstance(narration, bytes):
+                st.text('Summary narration:')
                 st.audio(narration)
                 with open("narration.mp4", "wb") as file:
                     file.write(narration)
