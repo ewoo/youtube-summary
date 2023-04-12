@@ -12,6 +12,7 @@ import requests
 from io import BytesIO
 import uuid
 import os
+from urllib.parse import urlparse, parse_qs
 
 
 def measure_time(func):
@@ -99,6 +100,11 @@ def save_transcription_output(output, txt_file):
     print(f"Transcription output text saved as {txt_file}.")
     print('')
 
+def load_transcription_file(txt_file):
+    transcript = {}
+    with open(txt_file, 'r', encoding='utf-8') as file:
+        transcript['text'] = file.read()
+    return transcript
 
 def generate_narration(summary_text):
     api_key = st.secrets["ELEVENLABS_API_KEY"]
@@ -112,7 +118,7 @@ def generate_narration(summary_text):
     payload = {
         "text": summary_text,
         "voice_settings": {
-            "stability": 0,
+            "stability": 0.75,
             "similarity_boost": 0
         }
     }
@@ -210,33 +216,52 @@ def generate_summary_of_summaries(summary):
     return resp['choices'][0]['text']
 
 # Main function.
-
-
 def summarize_youtube_video(youtube_video_url, model):
-    unique_id = str(uuid.uuid4().hex)[:8]
-    audio_file = 'audio-' + unique_id + '.mp4'
-    transcription_file = 'full-transcript-' + unique_id + '.txt'
-    summary_file = 'summary-' + unique_id + '.txt'
+    # unique_id = str(uuid.uuid4().hex)[:8]
 
-    youtube_video_url = youtube_video_url
-    download_audio_from_youtube(youtube_video_url, audio_file)
+    # extract the query string from the URL
+    parsed_url = urlparse(youtube_video_url)
+    query_string = parsed_url.query
+
+    # parse the query string into a dictionary
+    query_dict = parse_qs(query_string)
+
+    # access the query parameters
+    video_name = query_dict['v'][0]
+
+    audio_file = 'audio-' + video_name + '.mp4'
+    transcription_file = 'full-transcript-' + video_name + '.txt'
+    summary_file = 'summary-' + video_name + '.txt'
+
+    if not os.path.isfile(audio_file):
+        download_audio_from_youtube(youtube_video_url, audio_file)
     st.text('Extracted audio from YouTube video:')
     st.audio(audio_file)
 
-    output = transcribe_audio(model, audio_file)
-    save_transcription_output(
-        output, transcription_file)
+    if not os.path.isfile(transcription_file):
+        output = transcribe_audio(model, audio_file)
+        save_transcription_output(
+            output, transcription_file)
+    else:
+        output = load_transcription_file(transcription_file)
 
     # Clean-up audio file.
-    if os.path.exists(audio_file):
-        os.remove(audio_file)
+    # if os.path.exists(audio_file):
+    #     os.remove(audio_file)
 
     print("Converting transcription output to dataframe...")
     print("")
+
+    sentences = output['text'].split('.')
+    sentences = [sentence.strip() for sentence in sentences]
+    tokens = [len(sentence.split()) for sentence in sentences]
+
     # transcript_df = pd.DataFrame(output['segments'])
-    transcript_df = pd.DataFrame(output, columns=['text'], index=[0])
+    print(f'sentences:{len(sentences)} tokens:{len(tokens)}')
+    transcript_df = pd.DataFrame({'text': sentences, 'token_count': tokens}, index=range(len(sentences)))
+    print(transcript_df.head(30))
     # transcript_df['token_count'] = transcript_df['tokens'].apply(len)
-    # display_transcription_stats(transcript_df)
+    display_transcription_stats(transcript_df)
 
     # TODO: Chunk summaries only if exceeds target model's token limit.
     # print("Computing target indices...")
@@ -246,8 +271,8 @@ def summarize_youtube_video(youtube_video_url, model):
     div_progress.text('Summarizing transcription...')
     print("Generating summary...")
     print("")
-    summary = generate_intermmediate_summary(transcript_df, [0])
-    # summary = generate_intermmediate_summary(transcript_df, target_indices)
+    # summary = generate_intermmediate_summary(transcript_df, [0])
+    summary = generate_intermmediate_summary(transcript_df, target_indices)
     save_summary(summary, summary_file)
 
     div_progress.text('Wrapping-up...')
