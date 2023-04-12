@@ -137,7 +137,7 @@ def generate_narration(summary_text):
         return f"Error occurred: {e}"
 
 
-def get_target_indices(transcript_df, target_sum=4000):
+def get_target_indices(transcript_df, target_sum=2500):
     cumulative_sum = 0
     target_indices = []
 
@@ -277,15 +277,18 @@ def summarize_youtube_video(youtube_video_url, model):
     summary = generate_intermmediate_summary(transcript_df, target_indices)
     save_summary(summary, summary_file)
 
-    print("Generating Key Takeaways...")
-    print("")
-    final_summary = generate_key_takeaways(summary)
+    if len(target_indices) > 2:
+        print("Generating Key Takeaways...")
+        print("")
+        final_summary = generate_key_takeaways(summary)
+        summary = summary + "  " + final_summary
 
     print("Finished.")
     print("")
     div_progress.text('Done...')
 
-    return summary + "  " + final_summary
+    return summary
+
 
 # TODO: Add a function to slice the transcript if it's too long.
 def slice_if_transcription_is_long(transcript):
@@ -357,21 +360,19 @@ if submit_button:
             summary = summarize_youtube_video(youtube_video_url, model)
             st.write(f'**Summary**')
             st.write(f'{summary}')
-            display_summary_stats(summary)
-            
-            narration = generate_narration(summary)
-            if isinstance(narration, bytes):
-                st.text('**Audio Summary**')
-                st.audio(narration)
-                with open("narration.mp4", "wb") as file:
-                    file.write(narration)
-                    print("Narration file saved as narration.mp4")
-            else:
-                print("Error:")
-                print(narration)
-
             # Clear interstatial message area.
             div_progress.empty()
+            with st.spinner('Generating audio summary...'):
+                narration = generate_narration(summary)
+                if isinstance(narration, bytes):
+                    st.write('**Audio Summary**')
+                    st.audio(narration)
+                    with open("narration.mp4", "wb") as file:
+                        file.write(narration)
+                        print("Narration file saved as narration.mp4")
+                else:
+                    print("Error:")
+                    print(narration)
         with div_progress:
             st.success('Completed. Please review the summary below.')
         st.button('Lets Do Another!')
