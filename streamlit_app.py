@@ -107,6 +107,8 @@ def load_transcription_file(txt_file):
     return transcript
 
 def generate_narration(summary_text):
+    div_progress.text('Generating audio narration...')
+
     api_key = st.secrets["ELEVENLABS_API_KEY"]
     url = "https://api.elevenlabs.io/v1/text-to-speech/TxGEqnHWrfWFTfGW9XjX"
     headers = {
@@ -122,6 +124,8 @@ def generate_narration(summary_text):
             "similarity_boost": 0
         }
     }
+
+    div_progress.text('Done.')
 
     try:
         response = requests.post(url, json=payload, headers=headers)
@@ -174,8 +178,6 @@ def generate_intermmediate_summary(transcript_df, target_indices):
     summary = ''
     start_index = 0
 
-    st.write(f'**Summary**')
-
     if(len(target_indices)>0):
       for end_index in target_indices:
           prompt = transcript_df['text'][start_index: end_index]
@@ -210,7 +212,7 @@ def save_summary(summary, txt_file):
         file.write(summary)
 
 
-def generate_summary_of_summaries(summary):
+def generate_key_takeaways(summary):
     prompt = f"Generate key takeaways:{summary}"
     resp = call_GPT(prompt)
     return resp['choices'][0]['text']
@@ -235,7 +237,7 @@ def summarize_youtube_video(youtube_video_url, model):
 
     if not os.path.isfile(audio_file):
         download_audio_from_youtube(youtube_video_url, audio_file)
-    st.text('Extracted audio from YouTube video:')
+    st.text('Original audio from YouTube video:')
     st.audio(audio_file)
 
     if not os.path.isfile(transcription_file):
@@ -275,17 +277,15 @@ def summarize_youtube_video(youtube_video_url, model):
     summary = generate_intermmediate_summary(transcript_df, target_indices)
     save_summary(summary, summary_file)
 
-    div_progress.text('Wrapping-up...')
-    final_summary = summary
-    if len(target_indices) > 3:
-        print("Summarizing further...")
-        print("")
-        final_summary = generate_summary_of_summaries(summary)
-
-    div_progress.text('Done...')
-    print("Finished generating summary.")
+    print("Generating Key Takeaways...")
     print("")
-    return final_summary
+    final_summary = generate_key_takeaways(summary)
+
+    print("Finished.")
+    print("")
+    div_progress.text('Done...')
+
+    return summary + "  " + final_summary
 
 # TODO: Add a function to slice the transcript if it's too long.
 def slice_if_transcription_is_long(transcript):
@@ -355,9 +355,13 @@ if submit_button:
         with st.spinner('Summarizing your video...'):
             div_progress = st.empty()
             summary = summarize_youtube_video(youtube_video_url, model)
+            st.write(f'**Summary**')
+            st.write(f'{summary}')
+            display_summary_stats(summary)
+            
             narration = generate_narration(summary)
             if isinstance(narration, bytes):
-                st.text('Summary narration:')
+                st.text('**Audio Summary**')
                 st.audio(narration)
                 with open("narration.mp4", "wb") as file:
                     file.write(narration)
@@ -365,12 +369,9 @@ if submit_button:
             else:
                 print("Error:")
                 print(narration)
+
             # Clear interstatial message area.
             div_progress.empty()
-            if len(summary) > 0:
-                st.write(f'**Key Takeaways**')
-                st.write(f' {summary}')
-                display_summary_stats(len(summary.split()))
         with div_progress:
             st.success('Completed. Please review the summary below.')
         st.button('Lets Do Another!')
