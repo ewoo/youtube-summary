@@ -12,6 +12,7 @@ import streamlit as st
 from PIL import Image
 from getpass import getpass
 from pytube import YouTube
+from pydub import AudioSegment
 import openai
 import whisper
 import humanize
@@ -113,8 +114,10 @@ def save_transcription_output(output, txt_file):
 
 def load_transcription_file(txt_file):
     transcript = {}
+    logging.info(f"Loading transcript from file {txt_file}.")
     with open(txt_file, 'r', encoding='utf-8') as file:
         transcript['text'] = file.read()
+    logging.info(f"Transcripts content: {transcript['text']}.")
     return transcript
 
 
@@ -200,6 +203,7 @@ def generate_intermmediate_summary(transcript_df, target_indices):
             prompt = prompt.astype(str)
             prompt = ''.join(prompt)
             prompt = f"{prompt}\n\ntl;dr:"
+            logging.info(f'Prompt: {prompt}')
             # Call OpenAI.
             resp = call_GPT(prompt)
             summary = summary + resp['choices'][0]['text']
@@ -209,8 +213,9 @@ def generate_intermmediate_summary(transcript_df, target_indices):
         prompt = transcript_df['text']
         logging.info(f'Sending all in one-shot!')
         prompt = prompt.astype(str)
-        prompt = ''.join(prompt)
+        prompt = ''.join(prompt).strip()
         prompt = f"{prompt}\n\ntl;dr:"
+        logging.info(f'Prompt: {prompt}')
         # Call OpenAI.
         resp = call_GPT(prompt)
         summary = summary + resp['choices'][0]['text']
@@ -231,6 +236,69 @@ def generate_key_takeaways(summary):
     prompt = f"Generate key takeaways:{summary}"
     resp = call_GPT(prompt)
     return resp['choices'][0]['text']
+
+# Load the audio file default FILE_SIZE_LIMIT is 25MB
+def transcribe_large_audio_file(model, transcription_file, audio_file_path, FILE_SIZE_LIMIT=(25 * 1024 * 1024)):
+    audio_file_size = os.path.getsize(audio_file_path)
+    logging.info(f"Audio file size: {audio_file_size} bytes")
+
+    if audio_file_size > FILE_SIZE_LIMIT:
+        # Split the audio file into parts
+        logging.info(f"Splitting audio file into parts...")
+        audio = AudioSegment.from_file(audio_file_path)
+
+        # Calculate the number of parts to split the audio file into
+        num_parts = audio_file_size // FILE_SIZE_LIMIT + 1
+        duration = audio.duration_seconds // num_parts
+        logging.info(f"Total audio duration: {audio.duration_seconds}")
+        logging.info(f"Number of parts: {num_parts}")
+        logging.info(f"Duration of each part: {duration} seconds") 
+
+        output = []
+
+        for i in range(num_parts):
+            # Determine the start and end time positions for the current part
+            start = i * duration * 1000
+            end = start + duration * 1000
+            if end > audio.duration_seconds:
+                end = audio.duration_seconds
+
+            # Get the current part of the audio file
+            part = audio[start:end]
+
+            # Call transcribe_audio function for the current part
+            part_file = f"part{i}.mp3"
+            part.export(part_file, format="mp3")
+            part_output = transcribe_audio(model, part_file)
+
+            # Gather output
+            output.append(part_output)
+            logging.info(f"Transcription output for part {i}: {part_output}")
+
+            # Delete temporary file
+            os.remove(part_file)
+
+        # Call save_transcription_output function with the gathered output
+        logging.info(f"Saving transcription output: {output}")
+        save_transcription_output(output, transcription_file)
+    else:
+        if not os.path.isfile(transcription_file):
+            output = transcribe_audio(model, audio_file_path)
+            logging.info(f"Transcription output object structure: {output}")
+            save_transcription_output(output, transcription_file)
+        else:
+            output = []
+            output.append(load_transcription_file(transcription_file))
+        
+    return output
+
+def split_transcript_into_sentences(row):
+    if row['token_count'] > 2500:
+        split_text = row['text'].split('.')
+        new_rows = [{'text': sentence, 'token_count': len(sentence.split()) } for sentence in split_text]
+        return pd.DataFrame(new_rows)
+    else:
+        return row
 
 # Main function.
 
@@ -257,12 +325,7 @@ def summarize_youtube_video(youtube_video_url, model):
     st.text('Original audio from YouTube video:')
     st.audio(audio_file)
 
-    if not os.path.isfile(transcription_file):
-        output = transcribe_audio(model, audio_file)
-        save_transcription_output(
-            output, transcription_file)
-    else:
-        output = load_transcription_file(transcription_file)
+    output = transcribe_large_audio_file(model, transcription_file, audio_file)
 
     # Clean-up audio file.
     # if os.path.exists(audio_file):
@@ -270,16 +333,26 @@ def summarize_youtube_video(youtube_video_url, model):
 
     logging.info("Converting transcription output to dataframe...")
 
-    sentences = output['text'].split('.')
-    sentences = [sentence.strip() for sentence in sentences]
-    tokens = [len(sentence.split()) for sentence in sentences]
+    # sentences = output['text'].split('.')
+    # sentences = [sentence.strip() for sentence in sentences]
+    # tokens = [len(sentence.split()) for sentence in sentences]
 
-    # transcript_df = pd.DataFrame(output['segments'])
-    logging.debug(f'sentences:{len(sentences)} tokens:{len(tokens)}')
-    transcript_df = pd.DataFrame(
-        {'text': sentences, 'token_count': tokens}, index=range(len(sentences)))
-    logging.debug(transcript_df.head(30))
+    # # transcript_df = pd.DataFrame(output['segments'])
+    # logging.debug(f'sentences:{len(sentences)} tokens:{len(tokens)}')
+    # transcript_df = pd.DataFrame(
+    #     {'text': sentences, 'token_count': tokens}, index=range(len(sentences)))
+    # logging.debug(transcript_df.head(30))
     # transcript_df['token_count'] = transcript_df['tokens'].apply(len)
+
+    # Create a dataframe from the transcription output.
+    transcript_df = pd.DataFrame(output, index=range(len(output)))
+    transcript_df['token_count'] = transcript_df['text'].apply(lambda x: len(x.split()))
+    logging.info(f"Transcription dataframe: {transcript_df.head(10)}")
+    logging.info(f"Attempting to split rows with too many tokens...")
+    # If a row has too many tokens, split it into multiple rows.
+    new_df = transcript_df.apply(split_transcript_into_sentences, axis=1).reset_index(drop=True)
+    logging.info(f"Transcription dataframe: {new_df.head(10)}")
+
     display_transcription_stats(transcript_df)
 
     # TODO: Chunk summaries only if exceeds target model's token limit.
@@ -287,19 +360,23 @@ def summarize_youtube_video(youtube_video_url, model):
     # logging.info("")
     target_indices = get_target_indices(transcript_df)
 
-    div_progress.text('Summarizing transcription...')
-    logging.info("Generating summary...")
-    # summary = generate_intermmediate_summary(transcript_df, [0])
-    summary = generate_intermmediate_summary(transcript_df, target_indices)
-    save_summary(summary, summary_file)
+    summary = "HELLO WORLD"
 
-    if len(target_indices) > 2:
-        logging.info("Generating Key Takeaways...")
-        final_summary = generate_key_takeaways(summary)
-        summary = summary + "  " + final_summary
+    # div_progress.text('Summarizing transcription...')
+    # logging.info("Generating summary...")
+    # # summary = generate_intermmediate_summary(transcript_df, [0])
+    # summary = generate_intermmediate_summary(transcript_df, target_indices)
+    # logging.info(f"Summary: {summary}")
+    # save_summary(summary, summary_file)
 
-    logging.info("Finished.")
-    div_progress.text('Done...')
+    # if len(target_indices) > 2:
+    #     logging.info("Generating Key Takeaways...")
+    #     final_summary = generate_key_takeaways(summary)
+    #     logging.info(f"Final summary: {final_summary}")
+    #     summary = summary + "  " + final_summary
+
+    # logging.info("Finished.")
+    # div_progress.text('Done...')
 
     return summary
 
@@ -356,7 +433,7 @@ with div_header:
     resp = call_GPT(prompt)
     st.write(f'**GPT:** {extract_text_from_response(resp)}')
     st.warning(
-        'No GPU enabled. Transcription may be slow. Select shorter videos.', icon='🤖')
+        'No GPU enabled. Using web services. Transcription may be slow. Select shorter videos.', icon='🤖')
 
 model = None
 
