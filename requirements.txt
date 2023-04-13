@@ -8,3 +8,4 @@ requests==2.27.1
 streamlit==1.20.0
 whisper==1.1.10
 pydub==0.25.1
+humanize==4.6.0
