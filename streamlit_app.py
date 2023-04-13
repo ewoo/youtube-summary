@@ -292,13 +292,22 @@ def transcribe_large_audio_file(model, transcription_file, audio_file_path, FILE
         
     return output
 
-def split_transcript_into_sentences(row):
-    if row['token_count'] > 2500:
-        split_text = row['text'].split('.')
-        new_rows = [{'text': sentence, 'token_count': len(sentence.split()) } for sentence in split_text]
-        return pd.DataFrame(new_rows)
-    else:
-        return row
+def split_transcript_into_sentences(output):
+    text = []
+    token_counts = []
+    for row in output:
+        sentences = row['text'].split('.')
+        for sent in sentences:
+            text.append(sent + '.')
+            token_counts.append(len(sent.split()))
+    return text, token_counts
+
+    # if row['token_count'] > 2500:
+    #     split_text = row['text'].split('.')
+    #     new_rows = [{'text': sentence, 'token_count': len(sentence.split()) } for sentence in split_text]
+    #     return pd.DataFrame(new_rows)
+    # else:
+    #     return row
 
 # Main function.
 
@@ -345,13 +354,15 @@ def summarize_youtube_video(youtube_video_url, model):
     # transcript_df['token_count'] = transcript_df['tokens'].apply(len)
 
     # Create a dataframe from the transcription output.
-    transcript_df = pd.DataFrame(output, index=range(len(output)))
-    transcript_df['token_count'] = transcript_df['text'].apply(lambda x: len(x.split()))
+    sentences, token_counts = split_transcript_into_sentences(output)
+    transcript_df = pd.DataFrame({'text':sentences, 'token_count': token_counts}, index=range(len(sentences)))
+
+    # transcript_df['token_count'] = transcript_df['text'].apply(lambda x: len(x.split()))
+    # logging.info(f"Transcription dataframe: {transcript_df.head(10)}")
+    # logging.info(f"Attempting to split rows with too many tokens...")
+    # # If a row has too many tokens, split it into multiple rows.
+    # new_df = transcript_df.apply(split_transcript_into_sentences, axis=1).reset_index(drop=True)
     logging.info(f"Transcription dataframe: {transcript_df.head(10)}")
-    logging.info(f"Attempting to split rows with too many tokens...")
-    # If a row has too many tokens, split it into multiple rows.
-    new_df = transcript_df.apply(split_transcript_into_sentences, axis=1).reset_index(drop=True)
-    logging.info(f"Transcription dataframe: {new_df.head(10)}")
 
     display_transcription_stats(transcript_df)
 
@@ -360,23 +371,20 @@ def summarize_youtube_video(youtube_video_url, model):
     # logging.info("")
     target_indices = get_target_indices(transcript_df)
 
-    summary = "HELLO WORLD"
+    div_progress.text('Summarizing transcription...')
+    logging.info("Generating summary...")
+    summary = generate_intermmediate_summary(transcript_df, target_indices)
+    logging.info(f"Summary: {summary}")
+    save_summary(summary, summary_file)
 
-    # div_progress.text('Summarizing transcription...')
-    # logging.info("Generating summary...")
-    # # summary = generate_intermmediate_summary(transcript_df, [0])
-    # summary = generate_intermmediate_summary(transcript_df, target_indices)
-    # logging.info(f"Summary: {summary}")
-    # save_summary(summary, summary_file)
+    if len(target_indices) > 2:
+        logging.info("Generating Key Takeaways...")
+        final_summary = generate_key_takeaways(summary)
+        logging.info(f"Final summary: {final_summary}")
+        summary = summary + "  " + final_summary
 
-    # if len(target_indices) > 2:
-    #     logging.info("Generating Key Takeaways...")
-    #     final_summary = generate_key_takeaways(summary)
-    #     logging.info(f"Final summary: {final_summary}")
-    #     summary = summary + "  " + final_summary
-
-    # logging.info("Finished.")
-    # div_progress.text('Done...')
+    logging.info("Finished.")
+    div_progress.text('Done...')
 
     return summary
 
